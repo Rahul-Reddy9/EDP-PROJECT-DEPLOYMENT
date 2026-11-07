@@ -428,7 +428,6 @@ This final internship project demonstrates practical implementation of:
 |---|---|
 | Project Title | Credit Card Fraud Detection – Full-Stack AI/ML System |
 | Project Phase | Final Week |
-| Internship | Edunet Foundation AI/ML Internship |
 | Developer | G. Rahul Reddy |
 | Repository | EDP-PROJECT-DEPLOYMENT |
 
