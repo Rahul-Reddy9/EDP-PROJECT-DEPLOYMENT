@@ -7,6 +7,7 @@ processing, and structured error reporting.
 """
 
 from typing import Dict, List, Tuple, Any, Optional
+import os
 import time
 import requests
 from requests.exceptions import ConnectionError, Timeout, HTTPError, RequestException
@@ -15,7 +16,8 @@ from requests.exceptions import ConnectionError, Timeout, HTTPError, RequestExce
 class APIClient:
     """Client for the Week 8 FastAPI inference service."""
 
-    def __init__(self, base_url: str = "http://127.0.0.1:8000", timeout: float = 10.0):
+    def __init__(self, base_url: Optional[str] = None, timeout: float = 10.0):
+        base_url = base_url or os.getenv("API_BASE_URL", "http://127.0.0.1:8000")
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
 
