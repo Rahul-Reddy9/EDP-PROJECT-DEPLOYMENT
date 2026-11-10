@@ -34,6 +34,7 @@ from src.auth import (
     TokenResponse,
     UserRole,
     RevocationStoreError,
+    is_production_mode,
 )
 from src.rate_limiter import rate_limit_login, rate_limit_predict
 
@@ -46,7 +47,7 @@ if not logger.handlers:
 logger.setLevel(logging.INFO)
 
 # Environment Mode
-IS_PRODUCTION = os.getenv("ENV", os.getenv("ENVIRONMENT", "development")).lower().strip() in ("production", "prod")
+IS_PRODUCTION = is_production_mode()
 
 # Enforced Security Limits
 MAX_REQUEST_SIZE_BYTES = int(os.getenv("MAX_REQUEST_SIZE_BYTES", str(10 * 1024 * 1024)))  # 10 MB limit
@@ -62,10 +63,20 @@ app = FastAPI(
         "cryptographic JWT authentication, and server-side RBAC for Independent User and MLOps Administrator."
     ),
     version="1.0.0",
-    docs_url=None if IS_PRODUCTION else "/docs",
-    redoc_url=None if IS_PRODUCTION else "/redoc",
-    openapi_url=None if IS_PRODUCTION else "/openapi.json",
+    docs_url=None if is_production_mode() else "/docs",
+    redoc_url=None if is_production_mode() else "/redoc",
+    openapi_url=None if is_production_mode() else "/openapi.json",
 )
+
+# Documentation Protection Middleware
+@app.middleware("http")
+async def block_production_docs_middleware(request: Request, call_next):
+    """Guarantees that documentation and schema endpoints are strictly unreachable in production."""
+    if is_production_mode():
+        path = request.url.path.rstrip("/")
+        if path in ("/docs", "/openapi.json", "/redoc") or path.startswith("/docs/") or path.startswith("/redoc/"):
+            return JSONResponse(status_code=404, content={"detail": "Not Found"})
+    return await call_next(request)
 
 # Global Request Size Limit Middleware
 @app.middleware("http")
@@ -263,7 +274,7 @@ def root() -> Dict[str, Any]:
         "service": "Credit Card Fraud Detection API",
         "version": "1.0.0",
         "framework": "FastAPI + XGBoost",
-        "documentation": "/docs" if not IS_PRODUCTION else "disabled_in_production",
+        "documentation": "/docs" if not is_production_mode() else "disabled_in_production",
         "health_check": "/health",
         "endpoints": {
             "auth_login": "POST /auth/login",

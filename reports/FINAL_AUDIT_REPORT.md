@@ -3,7 +3,7 @@
 **Report Version:** 2.1 (Fail-Closed Revocation Hardening & Verification)  
 **Date of Audit:** 2026-11-10  
 **Project:** FraudGuard AI Enterprise Risk Suite  
-**Repository State:** Hardened & Fully Verified (115 / 115 Automated Tests Passed)  
+**Repository State:** Hardened & Fully Verified (118 / 118 Automated Tests Passed)  
 **Deployment Decision:** **READY FOR PRODUCTION DEPLOYMENT**
 
 ---
@@ -119,12 +119,17 @@ In accordance with strict operational constraints:
 ---
 
 ### SEC-06: Information Disclosure & OpenAPI Hardening
-- **Location:** [`backend/app.py`](file:///C:/IntershipProject/EDP-PROJECT-DEPLOYMENT/backend/app.py#L50-L55, #L240-L260)
+- **Location:** [`backend/app.py`](file:///C:/IntershipProject/EDP-PROJECT-DEPLOYMENT/backend/app.py#L48-L80, #L270-L280) and [`backend/src/auth.py`](file:///C:/IntershipProject/EDP-PROJECT-DEPLOYMENT/backend/src/auth.py#L74-L85)
 - **Remediation Details:**
   1. Sanitized `GET /health` failure responses: returns `"Service unavailable: model artifacts could not be loaded. Please check server logs."` without reflecting server filesystem paths or stack traces.
-  2. In production (`ENV=production`), OpenAPI documentation endpoints (`/docs`, `/redoc`, `/openapi.json`) are disabled (`docs_url=None`, `redoc_url=None`, `openapi_url=None`) to eliminate automated endpoint and parameter enumeration.
+  2. In production (`ENV=production` or Render platform auto-detection), OpenAPI and Swagger UI documentation endpoints (`/docs`, `/redoc`, `/openapi.json`) are disabled (`docs_url=None`, `redoc_url=None`, `openapi_url=None`).
+  3. Added `block_production_docs_middleware` in `backend/app.py` guaranteeing that `/docs`, `/openapi.json`, and `/redoc` requests unconditionally return **HTTP 404 Not Found** in production.
+  4. Robust environment normalization in `is_production_mode()` handles whitespace, quotes (`"production"`), case-insensitivity, and auto-detects `RENDER=true`.
 - **Automated Verification:**
-  - `tests/test_security_rbac.py::TestCORSAndInformationDisclosure::test_20_health_check_does_not_leak_paths` $\rightarrow$ **PASSED** (verified no local paths in health output).
+  - `tests/test_security_rbac.py::TestCORSAndInformationDisclosure::test_20_health_check_does_not_leak_paths` $\rightarrow$ **PASSED**
+  - `tests/test_security_rbac.py::TestCORSAndInformationDisclosure::test_20a_production_mode_disables_docs_and_openapi` $\rightarrow$ **PASSED** (verifies HTTP 404 for `/docs`, `/openapi.json`, `/redoc`)
+  - `tests/test_security_rbac.py::TestCORSAndInformationDisclosure::test_20b_development_mode_enables_docs_and_openapi` $\rightarrow$ **PASSED** (verifies HTTP 200 for `/docs`, `/openapi.json`, `/redoc`)
+  - `tests/test_security_rbac.py::TestCORSAndInformationDisclosure::test_20c_render_cloud_platform_auto_disables_docs` $\rightarrow$ **PASSED** (verifies Render platform auto-disabling)
 
 ---
 
@@ -158,21 +163,21 @@ Complete test suite execution summary across the modernized codebase:
 platform win32 -- Python 3.13.1, pytest-9.2.0, pluggy-1.7.0
 rootdir: C:\IntershipProject\EDP-PROJECT-DEPLOYMENT
 plugins: anyio-4.16.0
-collected 115 items
+collected 118 items
 
 tests\\test_api_client.py .................                               [ 14%]
-tests\\test_api_extended.py ......                                        [ 20%]
-tests\\test_extended_metrics.py ..........                                [ 28%]
-tests\\test_frontend_ui.py ..............                                 [ 40%]
-tests\\test_live_integration.py ....                                      [ 44%]
-tests\\test_model_comparison.py .....                                     [ 48%]
-tests\\test_model_evaluation.py ...........                               [ 58%]
-tests\\test_probability_precision.py ......                               [ 63%]
-tests\\test_security_rbac.py ............................                 [ 87%]
+tests\\test_api_extended.py ......                                        [ 19%]
+tests\\test_extended_metrics.py ..........                                [ 27%]
+tests\\test_frontend_ui.py ..............                                 [ 39%]
+tests\\test_live_integration.py ....                                      [ 43%]
+tests\\test_model_comparison.py .....                                     [ 47%]
+tests\\test_model_evaluation.py ...........                               [ 56%]
+tests\\test_probability_precision.py ......                               [ 61%]
+tests\\test_security_rbac.py ...............................              [ 88%]
 tests\\test_threshold_leakage_fix.py ....                                 [ 91%]
 tests\\test_validators.py ..........                                      [100%]
 
-====================== 115 passed, 7 warnings in 51.19s =======================
+====================== 118 passed, 7 warnings in 50.14s =======================
 ```
 
 ### Full Verification Breakdown:

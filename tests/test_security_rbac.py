@@ -355,6 +355,72 @@ class TestCORSAndInformationDisclosure:
         assert "/Users/" not in str(data)
         assert "initialization_error" not in data
 
+    def test_20a_production_mode_disables_docs_and_openapi(self, client, monkeypatch):
+        """In production (ENV=production), /docs, /openapi.json, and /redoc must be disabled (HTTP 404)."""
+        monkeypatch.setenv("ENV", "production")
+        # Verify /docs returns 404
+        res_docs = client.get("/docs")
+        assert res_docs.status_code == 404
+        assert res_docs.json().get("detail") == "Not Found"
+
+        # Verify /openapi.json returns 404
+        res_openapi = client.get("/openapi.json")
+        assert res_openapi.status_code == 404
+        assert res_openapi.json().get("detail") == "Not Found"
+
+        # Verify /redoc returns 404
+        res_redoc = client.get("/redoc")
+        assert res_redoc.status_code == 404
+        assert res_redoc.json().get("detail") == "Not Found"
+
+        # Verify root metadata reports documentation as disabled
+        res_root = client.get("/")
+        assert res_root.status_code == 200
+        assert res_root.json().get("documentation") == "disabled_in_production"
+
+    def test_20b_development_mode_enables_docs_and_openapi(self, client, monkeypatch):
+        """In development (ENV=development), /docs, /openapi.json, and /redoc must return HTTP 200."""
+        monkeypatch.setenv("ENV", "development")
+        monkeypatch.delenv("RENDER", raising=False)
+        monkeypatch.delenv("RENDER_SERVICE_ID", raising=False)
+
+        # Verify /docs returns 200
+        res_docs = client.get("/docs")
+        assert res_docs.status_code == 200
+
+        # Verify /openapi.json returns 200 and valid JSON schema
+        res_openapi = client.get("/openapi.json")
+        assert res_openapi.status_code == 200
+        schema = res_openapi.json()
+        assert "openapi" in schema
+        assert "paths" in schema
+        assert "/predict" in schema["paths"]
+
+        # Verify /redoc returns 200
+        res_redoc = client.get("/redoc")
+        assert res_redoc.status_code == 200
+
+        # Verify root metadata points to /docs
+        res_root = client.get("/")
+        assert res_root.status_code == 200
+        assert res_root.json().get("documentation") == "/docs"
+
+    def test_20c_render_cloud_platform_auto_disables_docs(self, client, monkeypatch):
+        """When deployed on Render (RENDER=true) without explicit dev override, documentation must be disabled."""
+        monkeypatch.delenv("ENV", raising=False)
+        monkeypatch.delenv("ENVIRONMENT", raising=False)
+        monkeypatch.setenv("RENDER", "true")
+
+        res_docs = client.get("/docs")
+        assert res_docs.status_code == 404
+
+        res_openapi = client.get("/openapi.json")
+        assert res_openapi.status_code == 404
+
+        res_root = client.get("/")
+        assert res_root.status_code == 200
+        assert res_root.json().get("documentation") == "disabled_in_production"
+
 
 class TestSecurityLimitsAndValidation:
     """Verifies request size and CSV batch limits."""

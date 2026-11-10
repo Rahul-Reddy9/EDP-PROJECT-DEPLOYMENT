@@ -73,8 +73,16 @@ _DEV_DYNAMIC_SECRET = secrets.token_hex(32)
 
 def is_production_mode() -> bool:
     """Returns True if the runtime environment is designated as production."""
-    env = os.getenv("ENV", os.getenv("ENVIRONMENT", "development")).lower().strip()
-    return env in ("production", "prod")
+    raw_env = os.getenv("ENV") or os.getenv("ENVIRONMENT") or ""
+    cleaned = raw_env.strip().strip("\"'").lower()
+    if cleaned in ("production", "prod", "live", "release"):
+        return True
+    if cleaned in ("development", "dev", "local", "test", "testing"):
+        return False
+    # Auto-detect Render cloud hosting environment if no development override is present
+    if os.getenv("RENDER", "").strip().strip("\"'").lower() in ("true", "1") or os.getenv("RENDER_SERVICE_ID"):
+        return True
+    return False
 
 
 def resolve_jwt_secret() -> str:
