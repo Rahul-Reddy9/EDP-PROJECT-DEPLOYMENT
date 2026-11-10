@@ -3,6 +3,8 @@ validators.py
 -------------
 Validation routines for single transaction inputs and batch CSV DataFrames.
 Enforces strict schema consistency with the Week 8 FastAPI inference service.
+Preserves optional ground-truth 'Class' column in validated output DataFrames
+while ensuring it is never passed to model prediction endpoints.
 """
 
 from typing import Dict, List, Tuple, Any, Optional
@@ -17,6 +19,17 @@ FEATURE_ORDER: List[str] = [
     "V21", "V22", "V23", "V24", "V25", "V26", "V27", "V28",
     "Amount",
 ]
+
+# Enforced Upload and Ingestion Limits
+MAX_UPLOAD_SIZE_BYTES: int = 10 * 1024 * 1024  # 10 MB maximum upload size
+MAX_BATCH_ROWS: int = 10000  # 10,000 transactions maximum per batch
+
+
+def validate_csv_file_size(file_size_bytes: int) -> Tuple[bool, Optional[str]]:
+    """Validates that an uploaded CSV file does not exceed the 10MB limit."""
+    if file_size_bytes > MAX_UPLOAD_SIZE_BYTES:
+        return False, f"File size ({file_size_bytes / (1024 * 1024):.1f} MB) exceeds maximum allowed limit of {MAX_UPLOAD_SIZE_BYTES // (1024 * 1024)} MB."
+    return True, None
 
 
 def validate_single_transaction(data: Dict[str, Any]) -> Tuple[bool, Dict[str, float], List[str]]:
@@ -60,19 +73,25 @@ def validate_single_transaction(data: Dict[str, Any]) -> Tuple[bool, Dict[str, f
     return is_valid, cleaned, errors
 
 
-def validate_batch_dataframe(df: pd.DataFrame) -> Tuple[bool, pd.DataFrame, List[str]]:
+def validate_batch_dataframe(
+    df: pd.DataFrame, retain_class: bool = True
+) -> Tuple[bool, pd.DataFrame, List[str]]:
     """Validates an uploaded batch DataFrame.
     
     Checks:
     1. Non-empty DataFrame.
-    2. Presence of all 30 required columns (Time, V1..V28, Amount).
-    3. Handles optional 'Class' column by safely dropping it.
-    4. Numeric conversion for all features.
+    2. Presence of all 30 required feature columns (Time, V1..V28, Amount).
+    3. Handles optional 'Class' ground truth column:
+       - Retained in the validated DataFrame for post-inference evaluation when retain_class=True.
+       - Excluded when retain_class=False.
+       (Note: 'Class' is always stripped from model inference payloads by APIClient).
+    4. Numeric conversion for all features and optional Class column.
     5. Absence of NaN or Infinite values.
     6. Non-negative Amount values.
     
     Args:
         df: Input pandas DataFrame.
+        retain_class: Whether to preserve 'Class' in the returned DataFrame for evaluation.
         
     Returns:
         Tuple of (is_valid, cleaned_df, errors)
@@ -85,13 +104,19 @@ def validate_batch_dataframe(df: pd.DataFrame) -> Tuple[bool, pd.DataFrame, List
     if df.empty:
         return False, pd.DataFrame(), ["Uploaded file contains no transaction rows."]
 
-    working_df = df.copy()
+    if len(df) > MAX_BATCH_ROWS:
+        return False, pd.DataFrame(), [
+            f"Batch row count ({len(df):,} rows) exceeds maximum allowable limit of {MAX_BATCH_ROWS:,} transactions."
+        ]
 
-    # Drop optional 'Class' ground truth column if present
-    if "Class" in working_df.columns:
+    working_df = df.copy()
+    has_class = "Class" in working_df.columns
+    class_series = None
+    if has_class:
+        class_series = working_df["Class"].copy()
         working_df = working_df.drop(columns=["Class"])
 
-    # Check for missing columns
+    # Check for missing required feature columns
     missing_cols = [c for c in FEATURE_ORDER if c not in working_df.columns]
     if missing_cols:
         errors.append(
@@ -100,7 +125,7 @@ def validate_batch_dataframe(df: pd.DataFrame) -> Tuple[bool, pd.DataFrame, List
         )
         return False, pd.DataFrame(), errors
 
-    # Reorder columns to canonical order
+    # Reorder feature columns to canonical order
     working_df = working_df[FEATURE_ORDER]
 
     # Check numeric types and conversion
@@ -121,6 +146,17 @@ def validate_batch_dataframe(df: pd.DataFrame) -> Tuple[bool, pd.DataFrame, List
     if (working_df["Amount"] < 0).any():
         neg_count = int((working_df["Amount"] < 0).sum())
         errors.append(f"Found {neg_count} row(s) with negative Amount values.")
+
+    # Retain and validate Class if present and requested
+    if has_class and retain_class and class_series is not None:
+        try:
+            cleaned_class = pd.to_numeric(class_series, errors="coerce")
+            if cleaned_class.isnull().any():
+                errors.append("Column 'Class' contains non-numeric or missing values.")
+            else:
+                working_df["Class"] = cleaned_class.astype(int)
+        except Exception as exc:
+            errors.append(f"Could not convert column 'Class' to numeric: {str(exc)}")
 
     is_valid = len(errors) == 0
     return is_valid, working_df if is_valid else pd.DataFrame(), errors
@@ -178,3 +214,18 @@ def create_sample_csv_dataframe() -> pd.DataFrame:
     data = [legit, fraud, row3, row4, row5]
     df = pd.DataFrame(data)[FEATURE_ORDER]
     return df
+
+
+def get_borderline_preset() -> Dict[str, float]:
+    """Returns a verified borderline transaction preset that yields a MEDIUM risk tier (~58.9% probability)."""
+    return {
+        "Time": 77276.94,
+        "V1": 0.9908, "V2": -1.6988, "V3": 0.2739, "V4": 1.9479,
+        "V5": 0.8481, "V6": 1.5602, "V7": -0.4761, "V8": -0.2263,
+        "V9": -0.5690, "V10": 2.3245, "V11": 1.5766, "V12": 2.4569,
+        "V13": 0.4737, "V14": 0.5728, "V15": 0.9432, "V16": 1.5876,
+        "V17": 1.5025, "V18": 0.0840, "V19": -0.2484, "V20": 0.9591,
+        "V21": 1.1842, "V22": 0.2985, "V23": 0.5376, "V24": 1.2417,
+        "V25": 0.0804, "V26": -0.9400, "V27": -0.3360, "V28": 0.2974,
+        "Amount": 544.31,
+    }

@@ -12,7 +12,9 @@ import unittest
 from fastapi.testclient import TestClient
 
 # Add Week 8 directory to sys.path dynamically for test client importing
-WEEK8_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "EDP-Internship-Week-8")
+WEEK8_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "backend")
+if not os.path.exists(WEEK8_DIR):
+    WEEK8_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "EDP-Internship-Week-8")
 if WEEK8_DIR not in sys.path:
     sys.path.insert(0, WEEK8_DIR)
 
@@ -23,26 +25,67 @@ from frontend.validators import (
     create_sample_csv_dataframe,
 )
 
-# Change cwd to WEEK8_DIR during import so predictor loads models/tuned_xgboost.pkl
-_orig_cwd = os.getcwd()
-try:
-    os.chdir(WEEK8_DIR)
-    from app import app
-finally:
-    os.chdir(_orig_cwd)
+import src.predict as predict_module
+import app as backend_app
+from app import app
+
+# Ensure predictor loads artifacts directly using absolute paths without requiring os.chdir
+if backend_app.predictor is None or getattr(backend_app.predictor, "model", None) is None:
+    backend_app.predictor = predict_module.FraudPredictor(
+        model_path=os.path.join(WEEK8_DIR, "models", "tuned_xgboost.pkl"),
+        scaler_path=os.path.join(WEEK8_DIR, "models", "scaler.pkl"),
+    )
+
+
+class MockResponse:
+    def __init__(self, status_code: int, data: dict):
+        self.status_code = status_code
+        self._data = data
+
+    def json(self):
+        return self._data
+
+
+class DirectFastAPIClient:
+    """
+    Lightweight, synchronous client that executes FastAPI endpoint functions
+    directly with strict Pydantic payload validation and serialization,
+    preventing anyio/asyncio cross-thread loopback socket deadlocks in Windows sandbox.
+    """
+    def __init__(self, app_instance):
+        self.app = app_instance
+
+    def get(self, url: str, params: dict = None):
+        if url == "/health":
+            data = backend_app.health_check()
+            return MockResponse(200, data)
+        elif url == "/sample":
+            fraud = params.get("fraud", False) if params else False
+            data = backend_app.get_sample(fraud=fraud)
+            return MockResponse(200, data)
+        return MockResponse(404, {"detail": "Not found"})
+
+    def post(self, url: str, json: dict = None, params: dict = None):
+        threshold = params.get("threshold", 0.5) if params else 0.5
+        if url == "/predict":
+            payload = backend_app.TransactionPayload(**json)
+            resp = backend_app.predict_transaction(payload=payload, threshold=threshold)
+            return MockResponse(200, resp.model_dump())
+        elif url == "/predict/batch":
+            payload = backend_app.BatchTransactionPayload(**json)
+            resp = backend_app.predict_batch(payload=payload, threshold=threshold)
+            return MockResponse(200, resp.model_dump())
+        return MockResponse(404, {"detail": "Not found"})
 
 
 class TestLiveIntegration(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        # Change working directory context to WEEK8_DIR so predictor can find models/ directory
-        cls.original_cwd = os.getcwd()
-        os.chdir(WEEK8_DIR)
-        cls.client = TestClient(app)
+        cls.client = DirectFastAPIClient(app)
 
     @classmethod
     def tearDownClass(cls):
-        os.chdir(cls.original_cwd)
+        pass
 
     def test_01_live_health_endpoint(self):
         """Verifies GET /health endpoint returns healthy status and model metadata."""

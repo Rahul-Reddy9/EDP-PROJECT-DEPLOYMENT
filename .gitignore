@@ -36,3 +36,13 @@ Desktop.ini
 *.log
 scratch/
 tmp/
+
+# Environment secrets
+.env
+.env.*
+!.env.example
+
+# Local databases
+*.db
+*.sqlite
+*.sqlite3

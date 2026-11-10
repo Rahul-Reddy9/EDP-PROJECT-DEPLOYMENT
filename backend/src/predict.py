@@ -26,8 +26,15 @@ FEATURE_ORDER = [
 
 SCALE_COLS = ["Time", "Amount"]
 
-DEFAULT_MODEL_PATH = os.path.join("models", "tuned_xgboost.pkl")
-DEFAULT_SCALER_PATH = os.path.join("models", "scaler.pkl")
+BACKEND_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+DEFAULT_MODEL_PATH = os.path.join(
+    BACKEND_DIR, "models", "tuned_xgboost.pkl"
+)
+
+DEFAULT_SCALER_PATH = os.path.join(
+    BACKEND_DIR, "models", "scaler.pkl"
+)
 
 
 class FraudPredictor:
@@ -106,17 +113,91 @@ class FraudPredictor:
         else:
             raise AttributeError("Loaded model has no predict or predict_proba method.")
 
+    def explain(self, processed_df: pd.DataFrame) -> List[Dict[str, Any]]:
+        """Calculates exact Tree SHAP feature contributions for each transaction."""
+        if hasattr(self.model, "get_booster"):
+            try:
+                import xgboost as xgb
+                booster = self.model.get_booster()
+                dmat = xgb.DMatrix(processed_df)
+                contribs = booster.predict(dmat, pred_contribs=True)
+                explanations = []
+                cols = list(processed_df.columns)
+                for row_contrib in contribs:
+                    feat_contribs = row_contrib[:-1]
+                    bias = float(row_contrib[-1])
+                    top_pos = [
+                        {"feature": f, "contribution": round(float(c), 4)}
+                        for f, c in sorted(zip(cols, feat_contribs), key=lambda x: x[1], reverse=True)
+                        if c > 0
+                    ][:5]
+                    top_neg = [
+                        {"feature": f, "contribution": round(float(c), 4)}
+                        for f, c in sorted(zip(cols, feat_contribs), key=lambda x: x[1])
+                        if c < 0
+                    ][:5]
+                    pos_name = top_pos[0]["feature"] if top_pos else "None"
+                    neg_name = top_neg[0]["feature"] if top_neg else "None"
+                    row_idx = len(explanations)
+                    all_features = [
+                        {
+                            "feature": f,
+                            "contribution": round(float(c), 4),
+                            "scaled_value": round(float(processed_df.iloc[row_idx][f]), 4),
+                        }
+                        for f, c in sorted(zip(cols, feat_contribs), key=lambda x: abs(x[1]), reverse=True)
+                    ]
+                    explanations.append({
+                        "method": "Tree SHAP (Exact Shapley Additive exPlanations)",
+                        "bias": round(bias, 4),
+                        "top_positive": top_pos,
+                        "top_negative": top_neg,
+                        "top_features": all_features,
+                        "summary": f"Primary risk-escalating factor is {pos_name}; primary mitigating factor is {neg_name}.",
+                    })
+                return explanations
+            except Exception as exc:
+                return [
+                    {
+                        "method": "error",
+                        "error": str(exc),
+                        "top_positive": [],
+                        "top_negative": [],
+                        "summary": "Explanation unavailable.",
+                    }
+                    for _ in range(len(processed_df))
+                ]
+        return [
+            {
+                "method": "unsupported",
+                "top_positive": [],
+                "top_negative": [],
+                "summary": "Model type does not support native tree contributions.",
+            }
+            for _ in range(len(processed_df))
+        ]
+
     def predict(
         self,
         data: Union[Dict[str, float], List[Dict[str, float]], pd.DataFrame],
         threshold: float = 0.5,
+        explain: bool = False,
     ) -> List[Dict[str, Any]]:
-        """Makes predictions with risk scoring and structured metadata."""
-        probabilities = self.predict_proba(data)
+        """Makes predictions with risk scoring, full-precision probabilities, and optional SHAP explainability."""
+        processed_df = self.preprocess(data)
+        if hasattr(self.model, "predict_proba"):
+            probabilities = self.model.predict_proba(processed_df)[:, 1]
+        elif hasattr(self.model, "predict"):
+            probabilities = self.model.predict(processed_df).astype(float)
+        else:
+            raise AttributeError("Loaded model has no predict or predict_proba method.")
+
+        explanations = self.explain(processed_df) if explain else None
         results = []
 
-        for prob in probabilities:
+        for i, prob in enumerate(probabilities):
             prob_float = float(prob)
+            legit_float = float(1.0 - prob_float)
             is_fraud = int(prob_float >= threshold)
 
             if prob_float >= 0.75:
@@ -126,13 +207,18 @@ class FraudPredictor:
             else:
                 risk_level = "LOW"
 
-            results.append({
+            res = {
                 "prediction": is_fraud,
                 "label": "Fraudulent" if is_fraud == 1 else "Legitimate",
-                "fraud_probability": round(prob_float, 4),
+                "fraud_probability": prob_float,
+                "legitimate_probability": legit_float,
                 "threshold_used": threshold,
                 "risk_level": risk_level,
-            })
+                "model_version": "1.0-baseline",
+            }
+            if explanations is not None:
+                res["explanation"] = explanations[i]
+            results.append(res)
 
         return results
 
