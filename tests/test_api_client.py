@@ -10,7 +10,14 @@ import unittest
 from unittest.mock import patch, MagicMock
 from requests.exceptions import ConnectionError, Timeout
 
-from frontend.api_client import APIClient, TRANSIENT_STATUS_CODES
+import os
+from frontend.api_client import (
+    APIClient,
+    TRANSIENT_STATUS_CODES,
+    resolve_default_api_url,
+    DEFAULT_RENDER_BACKEND_URL,
+    DEFAULT_LOCAL_BACKEND_URL,
+)
 from frontend.validators import get_sample_preset, FEATURE_ORDER
 
 
@@ -388,6 +395,76 @@ class TestAPIClient(unittest.TestCase):
         self.assertIsNotNone(result)
         self.assertEqual(mock_post.call_count, 3)
         self.assertEqual(result["total_chunks"], 3)
+
+    def test_18_resolve_default_api_url_deployed_render(self):
+        """Default backend URL in deployed/production environment is the Render URL."""
+        orig_api = os.environ.pop("API_BASE_URL", None)
+        orig_env = os.environ.pop("ENV", None)
+        orig_local = os.environ.pop("LOCAL_DEV", None)
+        try:
+            url = resolve_default_api_url()
+            self.assertEqual(url, "https://edp-project-deployment.onrender.com")
+            self.assertEqual(url, DEFAULT_RENDER_BACKEND_URL)
+        finally:
+            if orig_api is not None:
+                os.environ["API_BASE_URL"] = orig_api
+            if orig_env is not None:
+                os.environ["ENV"] = orig_env
+            if orig_local is not None:
+                os.environ["LOCAL_DEV"] = orig_local
+
+    def test_19_resolve_default_api_url_environment_variable_override(self):
+        """API_BASE_URL environment variable takes precedence when configured."""
+        orig_api = os.environ.get("API_BASE_URL")
+        try:
+            os.environ["API_BASE_URL"] = "https://custom-gateway.internal.net/api/"
+            url = resolve_default_api_url()
+            self.assertEqual(url, "https://custom-gateway.internal.net/api")
+        finally:
+            if orig_api is not None:
+                os.environ["API_BASE_URL"] = orig_api
+            else:
+                os.environ.pop("API_BASE_URL", None)
+
+    def test_20_resolve_default_api_url_local_development_flag(self):
+        """Explicit local development modes (ENV=development, LOCAL_DEV=true) resolve to localhost."""
+        orig_api = os.environ.pop("API_BASE_URL", None)
+        orig_env = os.environ.get("ENV")
+        orig_local = os.environ.get("LOCAL_DEV")
+        try:
+            os.environ["ENV"] = "development"
+            self.assertEqual(resolve_default_api_url(), "http://127.0.0.1:8000")
+
+            os.environ["ENV"] = "production"
+            os.environ["LOCAL_DEV"] = "true"
+            self.assertEqual(resolve_default_api_url(), "http://127.0.0.1:8000")
+        finally:
+            if orig_api is not None:
+                os.environ["API_BASE_URL"] = orig_api
+            if orig_env is not None:
+                os.environ["ENV"] = orig_env
+            else:
+                os.environ.pop("ENV", None)
+            if orig_local is not None:
+                os.environ["LOCAL_DEV"] = orig_local
+            else:
+                os.environ.pop("LOCAL_DEV", None)
+
+    def test_21_api_client_default_instance_uses_render_url(self):
+        """APIClient() instantiated without base_url defaults to Render URL when deployed."""
+        orig_api = os.environ.pop("API_BASE_URL", None)
+        orig_env = os.environ.pop("ENV", None)
+        orig_local = os.environ.pop("LOCAL_DEV", None)
+        try:
+            client = APIClient()
+            self.assertEqual(client.base_url, "https://edp-project-deployment.onrender.com")
+        finally:
+            if orig_api is not None:
+                os.environ["API_BASE_URL"] = orig_api
+            if orig_env is not None:
+                os.environ["ENV"] = orig_env
+            if orig_local is not None:
+                os.environ["LOCAL_DEV"] = orig_local
 
 
 if __name__ == "__main__":

@@ -49,11 +49,44 @@ def _sanitize_error_snippet(response_text: str) -> str:
     return response_text[:120].strip()
 
 
+DEFAULT_RENDER_BACKEND_URL = "https://edp-project-deployment.onrender.com"
+DEFAULT_LOCAL_BACKEND_URL = "http://127.0.0.1:8000"
+
+
+def resolve_default_api_url() -> str:
+    """
+    Resolves the active default backend API URL:
+    1. Checks 'API_BASE_URL' environment variable if explicitly configured.
+    2. Checks Streamlit secrets (st.secrets['API_BASE_URL']) if available in cloud runtime.
+    3. Checks if running in an explicit local development mode via
+       ENV in ('local', 'dev', 'development') or LOCAL_DEV in ('true', '1') -> returns DEFAULT_LOCAL_BACKEND_URL.
+    4. Production / deployed fallback: returns DEFAULT_RENDER_BACKEND_URL.
+    """
+    env_url = os.getenv("API_BASE_URL")
+    if env_url and env_url.strip():
+        return env_url.strip().rstrip("/")
+
+    try:
+        import streamlit as st
+        if hasattr(st, "secrets") and "API_BASE_URL" in st.secrets:
+            sec_url = str(st.secrets["API_BASE_URL"]).strip()
+            if sec_url:
+                return sec_url.rstrip("/")
+    except Exception:
+        pass
+
+    env_mode = (os.getenv("ENV") or os.getenv("ENVIRONMENT") or "").strip().lower()
+    if env_mode in ("local", "dev", "development") or os.getenv("LOCAL_DEV", "").strip().lower() in ("true", "1"):
+        return DEFAULT_LOCAL_BACKEND_URL
+
+    return DEFAULT_RENDER_BACKEND_URL
+
+
 class APIClient:
     """Client for the Week 8 FastAPI inference service with enterprise-grade resilience."""
 
     def __init__(self, base_url: Optional[str] = None, timeout: float = 10.0, token: Optional[str] = None):
-        base_url = base_url or os.getenv("API_BASE_URL", "http://127.0.0.1:8000")
+        base_url = base_url or resolve_default_api_url()
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
         self.token: Optional[str] = token

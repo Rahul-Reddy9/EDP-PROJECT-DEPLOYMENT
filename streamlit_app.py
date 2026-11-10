@@ -24,7 +24,12 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 
-from frontend.api_client import APIClient
+from frontend.api_client import (
+    APIClient,
+    resolve_default_api_url,
+    DEFAULT_RENDER_BACKEND_URL,
+    DEFAULT_LOCAL_BACKEND_URL,
+)
 from frontend.validators import (
     FEATURE_ORDER,
     validate_single_transaction,
@@ -84,7 +89,11 @@ st.markdown(clean_html(get_fintech_theme_css()), unsafe_allow_html=True)
 # 2. Session State Initialization
 # -----------------------------------------------------------------------------
 if "api_url" not in st.session_state:
-    st.session_state.api_url = os.getenv("API_BASE_URL", "http://127.0.0.1:8000")
+    query_api = st.query_params.get("api_url") if hasattr(st, "query_params") else None
+    if query_api and query_api.strip():
+        st.session_state.api_url = query_api.strip().rstrip("/")
+    else:
+        st.session_state.api_url = resolve_default_api_url()
 
 if "single_inputs" not in st.session_state:
     st.session_state.single_inputs = get_sample_preset(fraud=False)
@@ -314,18 +323,24 @@ with st.sidebar:
         help="FastAPI microservice endpoint.",
     )
     if api_url_input != st.session_state.api_url:
-        st.session_state.api_url = api_url_input
+        st.session_state.api_url = api_url_input.strip().rstrip("/")
+        if hasattr(st, "query_params"):
+            st.query_params["api_url"] = st.session_state.api_url
         st.rerun()
 
     # Quick Switcher
     col_sw1, col_sw2 = st.columns(2)
     with col_sw1:
         if st.button("☁️ Render", width="stretch", help="Switch to live cloud backend"):
-            st.session_state.api_url = "https://edp-project-deployment.onrender.com"
+            st.session_state.api_url = DEFAULT_RENDER_BACKEND_URL
+            if hasattr(st, "query_params"):
+                st.query_params["api_url"] = DEFAULT_RENDER_BACKEND_URL
             st.rerun()
     with col_sw2:
         if st.button("💻 Local", width="stretch", help="Switch to local server http://127.0.0.1:8000"):
-            st.session_state.api_url = "http://127.0.0.1:8000"
+            st.session_state.api_url = DEFAULT_LOCAL_BACKEND_URL
+            if hasattr(st, "query_params"):
+                st.query_params["api_url"] = DEFAULT_LOCAL_BACKEND_URL
             st.rerun()
 
     # Status summary
