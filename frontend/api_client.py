@@ -68,10 +68,15 @@ def resolve_default_api_url() -> str:
 
     try:
         import streamlit as st
-        if hasattr(st, "secrets") and "API_BASE_URL" in st.secrets:
-            sec_url = str(st.secrets["API_BASE_URL"]).strip()
-            if sec_url:
-                return sec_url.rstrip("/")
+        secrets_obj = getattr(st, "secrets", None)
+        if secrets_obj is not None:
+            try:
+                if "API_BASE_URL" in secrets_obj:
+                    sec_url = str(secrets_obj["API_BASE_URL"]).strip()
+                    if sec_url:
+                        return sec_url.rstrip("/")
+            except Exception:
+                pass
     except Exception:
         pass
 
@@ -80,6 +85,15 @@ def resolve_default_api_url() -> str:
         return DEFAULT_LOCAL_BACKEND_URL
 
     return DEFAULT_RENDER_BACKEND_URL
+
+
+__all__ = [
+    "APIClient",
+    "TRANSIENT_STATUS_CODES",
+    "resolve_default_api_url",
+    "DEFAULT_RENDER_BACKEND_URL",
+    "DEFAULT_LOCAL_BACKEND_URL",
+]
 
 
 class APIClient:

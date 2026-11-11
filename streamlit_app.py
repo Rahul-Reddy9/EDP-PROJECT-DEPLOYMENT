@@ -24,12 +24,35 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 
-from frontend.api_client import (
-    APIClient,
-    resolve_default_api_url,
-    DEFAULT_RENDER_BACKEND_URL,
-    DEFAULT_LOCAL_BACKEND_URL,
-)
+try:
+    from frontend.api_client import (
+        APIClient,
+        resolve_default_api_url,
+        DEFAULT_RENDER_BACKEND_URL,
+        DEFAULT_LOCAL_BACKEND_URL,
+    )
+except ImportError:
+    try:
+        from frontend import (
+            APIClient,
+            resolve_default_api_url,
+            DEFAULT_RENDER_BACKEND_URL,
+            DEFAULT_LOCAL_BACKEND_URL,
+        )
+    except ImportError:
+        DEFAULT_RENDER_BACKEND_URL = "https://edp-project-deployment.onrender.com"
+        DEFAULT_LOCAL_BACKEND_URL = "http://127.0.0.1:8000"
+
+        def resolve_default_api_url() -> str:
+            env_url = os.getenv("API_BASE_URL")
+            if env_url and env_url.strip():
+                return env_url.strip().rstrip("/")
+            env_mode = (os.getenv("ENV") or os.getenv("ENVIRONMENT") or "").strip().lower()
+            if env_mode in ("local", "dev", "development") or os.getenv("LOCAL_DEV", "").strip().lower() in ("true", "1"):
+                return DEFAULT_LOCAL_BACKEND_URL
+            return DEFAULT_RENDER_BACKEND_URL
+
+        from frontend.api_client import APIClient
 from frontend.validators import (
     FEATURE_ORDER,
     validate_single_transaction,

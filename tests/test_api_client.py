@@ -466,6 +466,71 @@ class TestAPIClient(unittest.TestCase):
             if orig_local is not None:
                 os.environ["LOCAL_DEV"] = orig_local
 
+    def test_22_api_client_module_all_exports(self):
+        """frontend.api_client defines and exports all public symbols in __all__."""
+        import frontend.api_client as ac
+        self.assertTrue(hasattr(ac, "__all__"))
+        expected_symbols = [
+            "APIClient",
+            "resolve_default_api_url",
+            "DEFAULT_RENDER_BACKEND_URL",
+            "DEFAULT_LOCAL_BACKEND_URL",
+            "TRANSIENT_STATUS_CODES",
+        ]
+        for sym in expected_symbols:
+            self.assertIn(sym, ac.__all__, f"{sym} must be listed in frontend.api_client.__all__")
+            self.assertTrue(hasattr(ac, sym), f"{sym} must be an attribute of frontend.api_client")
+
+    def test_23_frontend_package_and_module_export_consistency(self):
+        """frontend and frontend.api_client export identical resolve_default_api_url and URL constants."""
+        import frontend as fe
+        import frontend.api_client as ac
+        self.assertIs(fe.resolve_default_api_url, ac.resolve_default_api_url)
+        self.assertEqual(fe.DEFAULT_RENDER_BACKEND_URL, ac.DEFAULT_RENDER_BACKEND_URL)
+        self.assertEqual(fe.DEFAULT_LOCAL_BACKEND_URL, ac.DEFAULT_LOCAL_BACKEND_URL)
+
+    def test_24_resolve_default_api_url_streamlit_secrets(self):
+        """resolve_default_api_url respects st.secrets['API_BASE_URL'] when present."""
+        orig_api = os.environ.pop("API_BASE_URL", None)
+        orig_env = os.environ.pop("ENV", None)
+        orig_local = os.environ.pop("LOCAL_DEV", None)
+        mock_secrets = {"API_BASE_URL": "https://custom-secrets-api.example.com/"}
+        try:
+            with patch("streamlit.secrets", mock_secrets, create=True):
+                url = resolve_default_api_url()
+                self.assertEqual(url, "https://custom-secrets-api.example.com")
+        finally:
+            if orig_api is not None:
+                os.environ["API_BASE_URL"] = orig_api
+            if orig_env is not None:
+                os.environ["ENV"] = orig_env
+            if orig_local is not None:
+                os.environ["LOCAL_DEV"] = orig_local
+
+    def test_25_resolve_default_api_url_exception_resilience(self):
+        """resolve_default_api_url safely falls back to Render default when st.secrets raises Exception."""
+        orig_api = os.environ.pop("API_BASE_URL", None)
+        orig_env = os.environ.pop("ENV", None)
+        orig_local = os.environ.pop("LOCAL_DEV", None)
+
+        class BrokenSecrets:
+            def __contains__(self, key):
+                raise PermissionError("Access to secrets denied")
+            def __getitem__(self, key):
+                raise PermissionError("Access to secrets denied")
+
+        try:
+            with patch("streamlit.secrets", BrokenSecrets(), create=True):
+                url = resolve_default_api_url()
+                self.assertEqual(url, DEFAULT_RENDER_BACKEND_URL)
+        finally:
+            if orig_api is not None:
+                os.environ["API_BASE_URL"] = orig_api
+            if orig_env is not None:
+                os.environ["ENV"] = orig_env
+            if orig_local is not None:
+                os.environ["LOCAL_DEV"] = orig_local
+
 
 if __name__ == "__main__":
     unittest.main()
