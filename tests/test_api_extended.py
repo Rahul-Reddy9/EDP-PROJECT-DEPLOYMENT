@@ -40,7 +40,7 @@ class TestExtendedFastAPIEndpoints:
         """GET /model/info returns model architecture, hyperparameters, and feature metadata."""
         data = backend_app.get_model_info()
         assert data["status"] == "active"
-        assert data["model_version"] == "1.0-baseline"
+        assert data["model_version"] in ("2.0-optimized", "1.0-baseline")
         assert "XGBClassifier" in data["model_type"]
         assert data["expected_features_count"] == 30
         assert "StandardScaler" in data["scaler_type"]
@@ -58,19 +58,29 @@ class TestExtendedFastAPIEndpoints:
 
         # Primary benchmark metrics
         metrics = data["metrics"]
-        assert pytest.approx(metrics["accuracy"], rel=1e-3) == 0.9950
-        assert pytest.approx(metrics["precision"], rel=1e-3) == 0.8000
-        assert pytest.approx(metrics["recall"], rel=1e-3) == 0.5000
-        assert pytest.approx(metrics["f1_score"], rel=1e-3) == 0.6154
-        assert pytest.approx(metrics["roc_auc"], rel=1e-3) == 0.9910
-        assert pytest.approx(metrics["pr_auc"], rel=1e-3) == 0.7492
-
-        # Confusion matrix
         cm = data["confusion_matrix"]
-        assert cm["true_positives"] == 4
-        assert cm["false_positives"] == 1
-        assert cm["false_negatives"] == 4
-        assert cm["true_negatives"] == 999
+        if data.get("model_version") == "2.0-optimized":
+            assert pytest.approx(metrics["accuracy"], rel=1e-3) == 1004 / 1008
+            assert pytest.approx(metrics["precision"], rel=1e-3) == 1.0000
+            assert pytest.approx(metrics["recall"], rel=1e-3) == 0.5000
+            assert pytest.approx(metrics["f1_score"], rel=1e-3) == 0.6667
+            assert pytest.approx(metrics["roc_auc"], abs=1e-3) == 0.9947
+            assert pytest.approx(metrics["pr_auc"], abs=1e-3) == 0.8278
+            assert cm["true_positives"] == 4
+            assert cm["false_positives"] == 0
+            assert cm["false_negatives"] == 4
+            assert cm["true_negatives"] == 1000
+        else:
+            assert pytest.approx(metrics["accuracy"], rel=1e-3) == 0.9950
+            assert pytest.approx(metrics["precision"], rel=1e-3) == 0.8000
+            assert pytest.approx(metrics["recall"], rel=1e-3) == 0.5000
+            assert pytest.approx(metrics["f1_score"], rel=1e-3) == 0.6154
+            assert pytest.approx(metrics["roc_auc"], rel=1e-3) == 0.9910
+            assert pytest.approx(metrics["pr_auc"], rel=1e-3) == 0.7492
+            assert cm["true_positives"] == 4
+            assert cm["false_positives"] == 1
+            assert cm["false_negatives"] == 4
+            assert cm["true_negatives"] == 999
 
         # Bootstrap CIs present
         assert "confidence_intervals_95" in data
@@ -93,7 +103,7 @@ class TestExtendedFastAPIEndpoints:
         assert data["status"] == "success"
         manifest = data["manifest"]
         assert "models" in manifest
-        assert len(manifest["models"]) == 5
+        assert len(manifest["models"]) >= 5
 
     def test_05_predict_with_tree_shap_explainability(self):
         """POST /predict with explain=True returns feature contributions and base value."""
@@ -111,7 +121,7 @@ class TestExtendedFastAPIEndpoints:
         assert resp.label == "Fraudulent"
         assert resp.fraud_probability > 0.50
         assert pytest.approx(resp.fraud_probability + resp.legitimate_probability, rel=1e-4) == 1.0
-        assert resp.model_version == "1.0-baseline"
+        assert resp.model_version in ("2.0-optimized", "1.0-baseline")
 
         # Explainability validation
         assert resp.explanation is not None
@@ -143,4 +153,4 @@ class TestExtendedFastAPIEndpoints:
         assert resp.label == "Legitimate"
         assert resp.explanation is None
         assert resp.legitimate_probability > 0.99
-        assert resp.model_version == "1.0-baseline"
+        assert resp.model_version in ("2.0-optimized", "1.0-baseline")

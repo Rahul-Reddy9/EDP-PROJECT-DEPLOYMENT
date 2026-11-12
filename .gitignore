@@ -46,3 +46,14 @@ tmp/
 *.db
 *.sqlite
 *.sqlite3
+
+# Confidential Datasets & Ground Truth Evaluation Keys
+data/raw/
+fraudguard_answer_key.csv
+fraudguard_known_answer_test*.csv
+
+# Local transaction test files
+fraudguard_single_*_raw_test.csv
+
+# Processed datasets
+data/processed/*.csv

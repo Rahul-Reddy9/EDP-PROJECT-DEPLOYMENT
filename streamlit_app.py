@@ -120,6 +120,8 @@ if "api_url" not in st.session_state:
 
 if "single_inputs" not in st.session_state:
     st.session_state.single_inputs = get_sample_preset(fraud=False)
+    for feat, val in st.session_state.single_inputs.items():
+        st.session_state[f"input_{feat}"] = float(val)
 
 if "batch_results" not in st.session_state:
     st.session_state.batch_results = None
@@ -1373,6 +1375,11 @@ elif selected_nav == "🎯 Real-Time Scoring":
     )
 
     # Presets Bar
+    def apply_preset(preset_dict: Dict[str, float]) -> None:
+        st.session_state.single_inputs = preset_dict
+        for feat, val in preset_dict.items():
+            st.session_state[f"input_{feat}"] = float(val)
+
     st.markdown("##### ⚡ Quick-Fill Verified Test Scenarios")
     c_p1, c_p2, c_p3, c_p4 = st.columns(4)
 
@@ -1380,28 +1387,30 @@ elif selected_nav == "🎯 Real-Time Scoring":
         if st.button("🟢 Clean Merchant (Legitimate)", width="stretch"):
             if is_healthy:
                 api_sample, _ = client.get_sample(fraud=False)
-                st.session_state.single_inputs = api_sample or get_sample_preset(fraud=False)
+                sample = api_sample or get_sample_preset(fraud=False)
             else:
-                st.session_state.single_inputs = get_sample_preset(fraud=False)
+                sample = get_sample_preset(fraud=False)
+            apply_preset(sample)
             st.rerun()
 
     with c_p2:
         if st.button("⚠️ Suspicious Case (Medium Risk)", width="stretch"):
-            st.session_state.single_inputs = get_borderline_preset()
+            apply_preset(get_borderline_preset())
             st.rerun()
 
     with c_p3:
         if st.button("🚨 Syndicate Attack (High Risk)", width="stretch"):
             if is_healthy:
                 api_sample, _ = client.get_sample(fraud=True)
-                st.session_state.single_inputs = api_sample or get_sample_preset(fraud=True)
+                sample = api_sample or get_sample_preset(fraud=True)
             else:
-                st.session_state.single_inputs = get_sample_preset(fraud=True)
+                sample = get_sample_preset(fraud=True)
+            apply_preset(sample)
             st.rerun()
 
     with c_p4:
         if st.button("🔄 Zero Baseline Reset", width="stretch"):
-            st.session_state.single_inputs = {c: 0.0 for c in FEATURE_ORDER}
+            apply_preset({c: 0.0 for c in FEATURE_ORDER})
             st.rerun()
 
     # Alternative: Single CSV Upload
@@ -1414,11 +1423,11 @@ elif selected_nav == "🎯 Real-Time Scoring":
                     row_data = uploaded_single_df.iloc[0].to_dict()
                     valid_inputs = {c: float(row_data[c]) for c in FEATURE_ORDER if c in row_data and pd.notnull(row_data[c])}
                     if len(valid_inputs) == 30:
-                        st.session_state.single_inputs = valid_inputs
+                        apply_preset(valid_inputs)
                         st.success("✅ Successfully extracted all 30 canonical predictors from uploaded CSV!")
                     else:
+                        apply_preset(valid_inputs)
                         st.warning(f"Uploaded CSV provided {len(valid_inputs)}/30 canonical features. Pre-filled available values.")
-                        st.session_state.single_inputs.update(valid_inputs)
             except Exception as e:
                 st.error(f"Failed to read CSV: {e}")
 
@@ -1437,6 +1446,7 @@ elif selected_nav == "🎯 Real-Time Scoring":
                 value=float(st.session_state.single_inputs.get("Amount", 149.97)),
                 step=5.0,
                 format="%.2f",
+                key="input_Amount",
                 help="Actual checkout amount. Scaled using the pre-fitted StandardScaler before inference.",
             )
 
@@ -1448,6 +1458,7 @@ elif selected_nav == "🎯 Real-Time Scoring":
                 value=float(st.session_state.single_inputs.get("Time", 31604.21)),
                 step=10.0,
                 format="%.2f",
+                key="input_Time",
                 help="Seconds elapsed since reference dataset baseline.",
             )
 

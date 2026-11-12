@@ -11,8 +11,14 @@ CORS strict origin control, sanitized health-checks, and DoS limits.
 """
 
 import os
+import sys
 import io
 import logging
+
+_BACKEND_DIR = os.path.dirname(os.path.abspath(__file__))
+if _BACKEND_DIR not in sys.path:
+    sys.path.insert(0, _BACKEND_DIR)
+
 from typing import List, Dict, Any, Optional
 import pandas as pd
 from fastapi import FastAPI, HTTPException, Query, Depends, Request, status, UploadFile, File
@@ -235,6 +241,17 @@ def get_current_user_profile(current_user: User = Depends(get_current_user)) -> 
     return current_user
 
 
+@app.get("/auth/verify", tags=["Authentication"])
+def verify_token_status(current_user: User = Depends(get_current_user)) -> Dict[str, Any]:
+    """Validates the active session token, returning validity status, username, and role."""
+    return {
+        "valid": True,
+        "username": current_user.username,
+        "role": current_user.role,
+        "message": "Token is active and unrevoked.",
+    }
+
+
 @app.post("/auth/logout", tags=["Authentication"])
 def logout(request: Request, current_user: User = Depends(get_current_user)) -> Dict[str, str]:
     """Terminates session and persistently revokes the active JWT token in SQLite store."""
@@ -334,6 +351,7 @@ def predict_transaction(
     payload: TransactionPayload,
     threshold: float = Query(0.5, ge=0.0, le=1.0, description="Decision threshold for fraud classification"),
     explain: bool = Query(False, description="Set to true to compute Tree SHAP feature contributions"),
+    is_preprocessed: Optional[bool] = Query(None, description="Set to true if Time/Amount are already standardized, false for raw"),
 ) -> PredictionResponse:
     """Predicts fraud status for a single transaction payload with optional Tree SHAP explainability."""
     if predictor is None:
@@ -341,7 +359,9 @@ def predict_transaction(
 
     try:
         data_dict = payload.model_dump()
-        result = predictor.predict(data_dict, threshold=threshold, explain=explain)[0]
+        result = predictor.predict(
+            data_dict, threshold=threshold, explain=explain, is_preprocessed=is_preprocessed
+        )[0]
         return PredictionResponse(**result)
     except HTTPException:
         raise
@@ -359,6 +379,7 @@ def predict_transaction(
 def predict_batch(
     payload: BatchTransactionPayload,
     threshold: float = Query(0.5, ge=0.0, le=1.0, description="Decision threshold for fraud classification"),
+    is_preprocessed: Optional[bool] = Query(None, description="Set to true if Time/Amount are already standardized, false for raw"),
 ) -> BatchPredictionResponse:
     """Predicts fraud status for a batch of transaction payloads with enforced size limit."""
     if predictor is None:
@@ -375,7 +396,7 @@ def predict_batch(
 
     try:
         data_list = [t.model_dump() for t in payload.transactions]
-        results = predictor.predict(data_list, threshold=threshold)
+        results = predictor.predict(data_list, threshold=threshold, is_preprocessed=is_preprocessed)
         pred_objs = [PredictionResponse(**r) for r in results]
 
         fraud_count = sum(1 for p in pred_objs if p.prediction == 1)
@@ -403,6 +424,7 @@ def predict_batch(
 async def predict_csv(
     file: UploadFile = File(..., description="CSV file containing credit card transactions"),
     threshold: float = Query(0.5, ge=0.0, le=1.0, description="Decision threshold for fraud classification"),
+    is_preprocessed: Optional[bool] = Query(None, description="Set to true if Time/Amount are already standardized, false for raw"),
 ) -> BatchPredictionResponse:
     """
     Accepts an uploaded CSV file with transaction records, enforcing:
@@ -443,7 +465,7 @@ async def predict_csv(
             raise HTTPException(status_code=400, detail=f"CSV is missing required feature(s): {missing[:5]}")
 
         data_list = df[FEATURE_ORDER].to_dict(orient="records")
-        results = predictor.predict(data_list, threshold=threshold)
+        results = predictor.predict(data_list, threshold=threshold, is_preprocessed=is_preprocessed)
         pred_objs = [PredictionResponse(**r) for r in results]
 
         fraud_count = sum(1 for p in pred_objs if p.prediction == 1)
@@ -485,7 +507,7 @@ def get_model_info() -> Dict[str, Any]:
     return {
         "status": "active",
         "model_name": "Tuned XGBoost Classifier",
-        "model_version": "1.0-baseline",
+        "model_version": getattr(predictor, "model_version", "2.0-optimized"),
         "model_type": type(predictor.model).__name__,
         "scaler_type": type(predictor.scaler).__name__,
         "expected_features_count": len(FEATURE_ORDER),
@@ -493,7 +515,7 @@ def get_model_info() -> Dict[str, Any]:
         "scaled_features": ["Time", "Amount"],
         "hyperparameters": params,
         "default_threshold": 0.50,
-        "registry_status": "Production Baseline (Active)",
+        "registry_status": "Production Model (v2.0 Optimized)",
     }
 
 
@@ -509,7 +531,7 @@ def get_model_metrics(threshold: float = 0.50) -> Dict[str, Any]:
         cis = evaluator.compute_bootstrap_confidence_intervals(threshold=th_val)
         return {
             "status": "success",
-            "model_version": "1.0-baseline",
+            "model_version": getattr(predictor, "model_version", "2.0-optimized"),
             "threshold": th_val,
             "split": "held_out_test_set",
             "test_records": 1008,

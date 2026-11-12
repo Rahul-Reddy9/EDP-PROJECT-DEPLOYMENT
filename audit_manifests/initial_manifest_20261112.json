@@ -1,0 +1,59 @@
+{
+  "manifest_created_at": "2026-11-11T20:04:53Z",
+  "files": {
+    "data/raw/creditcard.csv": {
+      "sha256": "9DDD6A048BFD033F92CF973E19AF81239D421C7FDB8753BB8A99834F0CA96235",
+      "size_bytes": 2966320,
+      "mtime_iso": "2026-09-12T10:00:07Z",
+      "status": "EXISTS"
+    },
+    "data/processed/X_train.csv": {
+      "sha256": "0017982593F5FDA42E7C42D6EDD2B52EFFB81B4514DCE629A4C069A11AB098C8",
+      "size_bytes": 2378700,
+      "mtime_iso": "2026-11-11T11:59:04Z",
+      "status": "EXISTS"
+    },
+    "data/processed/y_train.csv": {
+      "sha256": "9D26170A2A51C1313146F068D05979F83D28AE247B4A1CACF02CDD430F5042C5",
+      "size_bytes": 12103,
+      "mtime_iso": "2026-09-12T10:01:19Z",
+      "status": "EXISTS"
+    },
+    "data/processed/X_test.csv": {
+      "sha256": "5B3A7D838F0048F81F5107C4EAEFFF33381E48F2E5B3B6FE4189E7062F074F89",
+      "size_bytes": 595060,
+      "mtime_iso": "2026-11-11T11:59:04Z",
+      "status": "EXISTS"
+    },
+    "data/processed/y_test.csv": {
+      "sha256": "94536AB60ACE4D3FD3B4424024427AD331B487F0319D1D66E880CDC9B38AC043",
+      "size_bytes": 3031,
+      "mtime_iso": "2026-09-12T10:01:19Z",
+      "status": "EXISTS"
+    },
+    "backend/models/backup_v1_tuned_xgboost.pkl": {
+      "sha256": "726791DE0C3978AC335AFBFFF09742B74E493CFF9213F1BF299CD6087935DBD6",
+      "size_bytes": 212909,
+      "mtime_iso": "2026-09-12T10:12:21Z",
+      "status": "EXISTS"
+    },
+    "backend/models/backup_v1_scaler.pkl": {
+      "sha256": "1D3D145EF9D19E162AEFB672C660A3870055A8343CB30B729513C524D284D242",
+      "size_bytes": 903,
+      "mtime_iso": "2026-09-29T16:57:00Z",
+      "status": "EXISTS"
+    },
+    "backend/models/tuned_xgboost.pkl": {
+      "sha256": "0DF4A74D9AFB6D250474F18258E1DE2073E3BA2A67CC1FD7BF89B82018396CA8",
+      "size_bytes": 215727,
+      "mtime_iso": "2026-11-11T11:47:11Z",
+      "status": "EXISTS"
+    },
+    "backend/models/scaler.pkl": {
+      "sha256": "0C49EE2D73B1F5845D7F6B5E9A266ACDBCEDCE2C9F92AC81EB2BAD168BAD58AA",
+      "size_bytes": 903,
+      "mtime_iso": "2026-11-11T11:47:11Z",
+      "status": "EXISTS"
+    }
+  }
+}

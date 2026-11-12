@@ -34,6 +34,25 @@ from frontend.charts import (
 
 
 class TestFrontendUI(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls._orig_api_url = os.environ.get("API_BASE_URL")
+        cls._orig_env = os.environ.get("ENV")
+        os.environ["API_BASE_URL"] = "http://127.0.0.1:8000"
+        os.environ["ENV"] = "test"
+
+    @classmethod
+    def tearDownClass(cls):
+        if cls._orig_api_url is not None:
+            os.environ["API_BASE_URL"] = cls._orig_api_url
+        else:
+            os.environ.pop("API_BASE_URL", None)
+
+        if cls._orig_env is not None:
+            os.environ["ENV"] = cls._orig_env
+        else:
+            os.environ.pop("ENV", None)
+
     def test_01_theme_css_generation(self):
         """Custom fintech CSS should contain core dark navy and glassmorphic selectors."""
         css = get_fintech_theme_css()

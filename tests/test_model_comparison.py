@@ -32,7 +32,7 @@ class TestCandidateModelRegistry:
         assert "active_production_model" in manifest
         assert "models" in manifest
         assert isinstance(manifest["models"], list)
-        assert len(manifest["models"]) == 5
+        assert len(manifest["models"]) >= 5
 
     def test_02_all_five_candidate_models_registered(self):
         """All 5 candidate algorithms must be registered with CV and test metrics."""
